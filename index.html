@@ -35,6 +35,18 @@
       margin-bottom: 16px;
     }
 
+    #subtitle a {
+      color: rgba(255,255,255,0.35);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    #subtitle a:hover {
+      color: rgba(255,255,255,0.75);
+      border-color: rgba(255,255,255,0.4);
+    }
+
     #score-board {
       display: flex;
       gap: 32px;
@@ -119,7 +131,7 @@
 <body>
 
   <header>Jogo Pong</header>
-  <div id="subtitle">Feito por @um.danilo</div>
+  <div id="subtitle">Feito por <a href="https://linktree-one-liart.vercel.app" target="_blank">@um.danilo</a></div>
 
   <div id="score-board">
     <span id="score-player">0</span>
