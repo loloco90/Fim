@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jogo Pong</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0a;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1rem;
+    }
+
+    header {
+      font-size: clamp(18px, 4vw, 26px);
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    #subtitle {
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    #score-board {
+      display: flex;
+      gap: 32px;
+      margin-bottom: 12px;
+      font-size: clamp(28px, 6vw, 40px);
+      font-weight: bold;
+      letter-spacing: 0.1em;
+    }
+
+    #score-board span.sep {
+      color: rgba(255,255,255,0.2);
+    }
+
+    #canvas-container {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #000;
+      max-width: 100%;
+    }
+
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+
+    #controls {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+      align-items: center;
+    }
+
+    button {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      letter-spacing: 0.1em;
+      padding: 8px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.5); }
+    button:active { transform: scale(0.97); }
+
+    select {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    select option { background: #111; color: #fff; }
+
+    #msg {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.45);
+      margin-top: 10px;
+      min-height: 18px;
+      text-align: center;
+    }
+
+    #hint {
+      font-size: 10px;
+      color: rgba(255,255,255,0.2);
+      margin-top: 6px;
+      text-align: center;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+
+  <header>Jogo Pong</header>
+  <div id="subtitle">Colégio Estadual</div>
+
+  <div id="score-board">
+    <span id="score-player">0</span>
+    <span class="sep">:</span>
+    <span id="score-oponent">0</span>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="pong"></canvas>
+  </div>
+
+  <div id="controls">
+    <button id="btn-start">Iniciar</button>
+    <select id="difficulty">
+      <option value="easy">Fácil</option>
+      <option value="medium" selected>Médio</option>
+      <option value="hard">Difícil</option>
+    </select>
+  </div>
+
+  <div id="msg">Pressione Iniciar para jogar</div>
+  <div id="hint">Teclado: ↑ ↓ &nbsp;|&nbsp; Mouse: lado esquerdo &nbsp;|&nbsp; 📱 Toque e arraste</div>
+
+  <script>
+    const canvas = document.getElementById('pong');
+    const ctx = canvas.getContext('2d');
+    const btn = document.getElementById('btn-start');
+    const msgEl = document.getElementById('msg');
+
+    const BASE = 520;
+
+    function resize() {
+      const maxW = Math.min(window.innerWidth - 32, BASE);
+      canvas.width = maxW;
+      canvas.height = maxW;
+    }
+    resize();
+    window.addEventListener('resize', () => { resize(); if (state !== 'playing') drawIdle(); });
+
+    function scale() { return canvas.width / BASE; }
+
+    let scorePlayer = 0, scoreOponent = 0;
+    let state = 'idle';
+    let animId = null;
+
+    const diffOponentSpeed = { easy: 2.5, medium: 3.5, hard: 5.5 };
+
+    let ball, player, oponent;
+
+    function resetPositions() {
+      player  = { x: 10, y: BASE/2 - 50, w: 6, h: 100 };
+      oponent = { x: BASE - 16, y: BASE/2 - 50, w: 6, h: 100 };
+    }
+
+    function spawnBall() {
+      const dir = Math.random() > 0.5 ? 1 : -1;
+      const angle = (Math.random() * 0.6 - 0.3);
+      ball = { x: BASE/2, y: BASE/2, r: 8, vx: dir * 3.5, vy: 3.5 * Math.sin(angle) };
+    }
+
+    resetPositions();
+
+    const keys = {};
+    document.addEventListener('keydown', e => { keys[e.key] = true; });
+    document.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+    let touchLastY = null;
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); touchLastY = e.touches[0].clientY; }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (state !== 'playing') return;
+      const dy = (e.touches[0].clientY - touchLastY) / scale();
+      touchLastY = e.touches[0].clientY;
+      player.y += dy;
+    }, { passive: false });
+    canvas.addEventListener('touchend', () => { touchLastY = null; });
+
+    canvas.addEventListener('mousemove', e => {
+      if (state !== 'playing') return;
+      const rect = canvas.getBoundingClientRect();
+      const relX = (e.clientX - rect.left) / scale();
+      if (relX < BASE / 2) player.y = (e.clientY - rect.top) / scale() - player.h / 2;
+    });
+
+    function clamp(p) {
+      if (p.y < 0) p.y = 0;
+      if (p.y + p.h > BASE) p.y = BASE - p.h;
+    }
+
+    function collide(p) {
+      return ball.x - ball.r < p.x + p.w &&
+             ball.x + ball.r > p.x &&
+             ball.y + ball.r > p.y &&
+             ball.y - ball.r < p.y + p.h;
+    }
+
+    function update() {
+      const playerSpeed = 5;
+      if (keys['ArrowUp']   || keys['w'] || keys['W']) player.y -= playerSpeed;
+      if (keys['ArrowDown'] || keys['s'] || keys['S']) player.y += playerSpeed;
+      clamp(player);
+
+      const ov = diffOponentSpeed[document.getElementById('difficulty').value];
+      const oCenter = oponent.y + oponent.h / 2;
+      if (ball.y > oCenter + 3) oponent.y += ov;
+      if (ball.y < oCenter - 3) oponent.y -= ov;
+      clamp(oponent);
+
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      if (ball.y - ball.r < 0)    { ball.y = ball.r;        ball.vy =  Math.abs(ball.vy); }
+      if (ball.y + ball.r > BASE) { ball.y = BASE - ball.r;  ball.vy = -Math.abs(ball.vy); }
+
+      if (collide(player)) {
+        ball.x = player.x + player.w + ball.r;
+        const rel = (ball.y - (player.y + player.h/2)) / (player.h/2);
+        const speed = Math.min(Math.hypot(ball.vx, ball.vy) * 1.04, 9);
+        ball.vx =  Math.abs(speed * Math.cos(rel * 0.8));
+        ball.vy = speed * Math.sin(rel * 0.8);
+      }
+      if (collide(oponent)) {
+        ball.x = oponent.x - ball.r;
+        const rel = (ball.y - (oponent.y + oponent.h/2)) / (oponent.h/2);
+        const speed = Math.min(Math.hypot(ball.vx, ball.vy) * 1.04, 9);
+        ball.vx = -Math.abs(speed * Math.cos(rel * 0.8));
+        ball.vy = speed * Math.sin(rel * 0.8);
+      }
+
+      if (ball.x < 0) {
+        scoreOponent++;
+        document.getElementById('score-oponent').textContent = scoreOponent;
+        spawnBall();
+        msgEl.textContent = 'Ponto do oponente!';
+        setTimeout(() => { if (state === 'playing') msgEl.textContent = ''; }, 1200);
+      }
+      if (ball.x > BASE) {
+        scorePlayer++;
+        document.getElementById('score-player').textContent = scorePlayer;
+        spawnBall();
+        msgEl.textContent = 'Seu ponto!';
+        setTimeout(() => { if (state === 'playing') msgEl.textContent = ''; }, 1200);
+      }
+    }
+
+    function drawScene(showBall) {
+      const s = scale();
+      ctx.save();
+      ctx.scale(s, s);
+
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, BASE, BASE);
+
+      ctx.setLineDash([10, 10]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(BASE/2, 0); ctx.lineTo(BASE/2, BASE); ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (showBall && ball) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill();
+      }
+
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.roundRect(player.x, player.y, player.w, player.h, 3); ctx.fill();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath(); ctx.roundRect(oponent.x, oponent.y, oponent.w, oponent.h, 3); ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawIdle() { drawScene(false); }
+
+    function loop() {
+      update();
+      drawScene(true);
+      animId = requestAnimationFrame(loop);
+    }
+
+    function stopLoop() {
+      if (animId) { cancelAnimationFrame(animId); animId = null; }
+    }
+
+    btn.addEventListener('click', () => {
+      if (state === 'playing') {
+        stopLoop();
+        state = 'idle';
+        scorePlayer = 0; scoreOponent = 0;
+        document.getElementById('score-player').textContent = '0';
+        document.getElementById('score-oponent').textContent = '0';
+        resetPositions();
+        ball = null;
+        btn.textContent = 'Iniciar';
+        msgEl.textContent = 'Pressione Iniciar para jogar';
+        drawIdle();
+      } else {
+        state = 'playing';
+        spawnBall();
+        btn.textContent = 'Reiniciar';
+        msgEl.textContent = '';
+        loop();
+      }
+    });
+
+    drawIdle();
+  </script>
+
+</body>
+</html>
